@@ -15,6 +15,8 @@
 # %% [markdown]
 # # Refactoring the calcium demo 
 #
+# **Even when starting from this slightly modified example, I get validation errors when adding a second ROI.**  
+#
 # Given all the incomprehensible bugs in my previous attempts to get an interactive holoviews based ROI editor, let's start all over again with the working calcium demo: https://holoviews.org/gallery/demos/bokeh/box_draw_roi_editor.html 
 #
 # A problem is that in order to start exactly with the example I would need the `twophoton.npz` file. Instead I will try to use our own hyperspectral data. 
@@ -105,6 +107,7 @@ im = hv.RGB(pseudo_rgb, bounds=bounds).opts(aspect='equal')
     opts.Polygons(fill_alpha=0.2, line_color='white'),
     opts.VLine(color='black'))
 
-# %%
+# %% [markdown]
+# Adding a second ROI introduces 
 
 # %%
