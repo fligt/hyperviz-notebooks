@@ -106,3 +106,5 @@ im = hv.RGB(pseudo_rgb, bounds=bounds).opts(aspect='equal')
     opts.VLine(color='black'))
 
 # %%
+
+# %%

@@ -7,7 +7,12 @@ authors = [
     { name = "Frank Ligterink", email = "frank.ligterink@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "datashader>=0.19.1",
+    "holoviews>=1.23.1",
+    "numpy>=2.4.6",
+    "panel>=1.9.3",
+]
 
 [project.scripts]
 hyperviz-notebooks = "hyperviz_notebooks:main"
@@ -18,7 +23,9 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "fairdatanow>=0.2.23",
     "ipykernel>=7.3.0",
+    "jupyter-bokeh>=4.1.0",
     "jupytext>=1.19.5",
     "pip>=26.2.1",
 ]
