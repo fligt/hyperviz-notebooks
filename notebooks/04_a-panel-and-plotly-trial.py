@@ -1,6 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: ipynb,py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -16,24 +17,19 @@
 # # A panel and plotly trial 
 
 # %% [markdown]
-# Well, actually I can not get a panel plotly pane to display. Alternatively the bokeh pane seems to work fine...  
+# Well, actually I can not get a panel plotly pane to display. Alternatively the bokeh pane seems to work fine....  
 
 # %% [markdown]
 # Let's start by a look at the panel documentation: https://panel.holoviz.org/reference/index.html# and dive straight into plotly: https://panel.holoviz.org/reference/panes/Plotly.html
 
 # %%
 import panel as pn
-
-pn.extension("plotly")
-
-# %%
 import numpy as np
 import plotly.graph_objs as go
 
-import panel as pn
+pn.extension("plotly") 
 
-pn.extension("plotly")
-
+# %%
 xx = np.linspace(-3.5, 3.5, 100)
 yy = np.linspace(-3.5, 3.5, 100)
 x, y = np.meshgrid(xx, yy)
