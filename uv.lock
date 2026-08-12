@@ -727,7 +727,9 @@ dev = [
     { name = "ipykernel" },
     { name = "jupyter-bokeh" },
     { name = "jupytext" },
+    { name = "matplotlib" },
     { name = "pip" },
+    { name = "plotly" },
 ]
 
 [package.metadata]
@@ -749,7 +751,9 @@ dev = [
     { name = "ipykernel", specifier = ">=7.3.0" },
     { name = "jupyter-bokeh", specifier = ">=4.1.0" },
     { name = "jupytext", specifier = ">=1.19.5" },
+    { name = "matplotlib", specifier = ">=3.11.1" },
     { name = "pip", specifier = ">=26.2.1" },
+    { name = "plotly", specifier = ">=6.9.0" },
 ]
 
 [[package]]
