@@ -18,12 +18,15 @@
 # https://plotly.com/python/selections/
 
 # %%
-from dash import Dash, dcc, html, Input, Output, no_update, callback
+from dash import Dash, dcc, html, Input, Output, no_update, callback, State, Patch
+import dash_daq as daq
 import plotly.express as px
 import numpy as np
 from fairdatanow import data_now
 from skimage import io
 import datashader as ds
+import pandas as pd
+import plotly.graph_objects as go
 
 # %%
 url = 'https://laboppad.nl/ukiyo-e-world' 
@@ -89,10 +92,18 @@ app = Dash(__name__)
 app.layout = html.Div(
     [
         html.H3("First Dashboard for ROI's"),
+        # html.Div(
+        #     [dcc.Graph(id="tif_rgb", figure=fig_tif, config={'scrollZoom':True})],
+        #     style={"width": "30%", "display": "inline-block"},
+        # ),
         html.Div(
-            [dcc.Graph(id="tif_rgb", figure=fig_tif, config={'scrollZoom':True})],
-            style={"width": "30%", "display": "inline-block"},
-        ),
+            [daq.ColorPicker(
+            id='color',
+            label='Line Color',
+            value=dict(hex='#119DFF'),
+            ),
+            dcc.Input(id="annotate", type="text", placeholder="annotation")], 
+            style={"width": "30%", 'background-color': 'white'}),
         html.Div(
             [dcc.Graph(id="pseudo_rgb", figure=fig_img, config={"modeBarButtonsToAdd": ["drawrect", "eraseshape"], 'scrollZoom':True})],
             style={"width": "30%", "display": "inline-block"},
@@ -107,36 +118,134 @@ app.layout = html.Div(
 
 @callback(
     Output("spectrum", "figure"),
+    Output('pseudo_rgb', "figure"),
     Input("pseudo_rgb", "relayoutData"),
-    prevent_initial_call=True
+    State("color", "value"),
+    State("annotate", "value")
 )
-def on_new_annotation(relayout_data):
+def on_new_annotation(relayout_data, color, text):
     shapes = (relayout_data or {}).get("shapes")
     if not shapes:
         return no_update
 
-    lines = []
-
-    for s in shapes:
+    fig = go.Figure()
     
+    patched_fig = Patch()
+    
+    patched_fig['layout']['newshape']['line']['color'] = color['hex']
+
+    for i, s in enumerate(shapes):
         x0, x1 = sorted([max(0, min(w, int(s["x0"]))), max(0, min(w, int(s["x1"])))])
         y0, y1 = sorted([max(0, min(h, int(s["y0"]))), max(0, min(h, int(s["y1"])))])
 
         roi_cube = cube[y0:y1, x0:x1, :]
         if roi_cube.size == 0:
             return no_update
-        lines.append(roi_cube.mean(axis=(0,1)))
 
-    fig = px.line(
-        x=wavelengths, 
-        y=lines, 
-        labels={"x": "Wavelength", "y": "Intensity"},
-        title=f"ROI Mean Spectrum ({x1-x0}x{y1-y0} px)"
+        mean_spectrum = roi_cube.mean(axis=(0, 1))
+
+        fig.add_trace(go.Scatter(
+            x=wavelengths,
+            y=mean_spectrum,
+            mode='lines',
+            name=f'{i + 1} {text}'
+        ))
+
+    fig.update_layout(
+        xaxis_title="Wavelength",
+        yaxis_title="Intensity",
+        title="ROI Mean Spectra"
     )
+    return fig, patched_fig
 
-    #coords = f'x0:{x0}, x1:{x1}, y0:{y0}, y1:{y1}'
+@callback(
+    Output(component_id='text-example-output', component_property='children'),
+    Input('pseudo_rgb', 'clickData'),
+    prevent_initial_call=True
+)
+def on_rgb_click(click_data):
+    return str(click_data)
 
-    return fig
+if __name__ == "__main__":
+    app.run(debug=True)
+
+# %%
+# Base figures
+img = io.imread(tif_file)
+fig_tif  = px.imshow(img)
+fig_img = px.imshow(pseudo_rgb, binary_string=True).update_layout(dragmode="drawrect")
+fig_spec = go.Figure()
+
+app = Dash(__name__)
+app.layout = html.Div(
+    [
+        html.H3("First Dashboard for ROI's"),
+        # html.Div(
+        #     [dcc.Graph(id="tif_rgb", figure=fig_tif, config={'scrollZoom':True})],
+        #     style={"width": "30%", "display": "inline-block"},
+        # ),
+        html.Div(
+            [daq.ColorPicker(
+            id='color',
+            label='Line Color',
+            value=dict(hex='#119DFF'),
+            ),
+            dcc.Input(id="annotate", type="text", placeholder="annotation")], 
+            style={"width": "30%", 'background-color': 'white'}),
+        html.Div(
+            [dcc.Graph(id="pseudo_rgb", figure=fig_img, config={"modeBarButtonsToAdd": ["drawrect", "eraseshape"], 'scrollZoom':True})],
+            style={"width": "30%", "display": "inline-block"},
+        ),
+        html.Div(
+            [dcc.Graph(id="spectrum", figure={})],
+            style={"width": "40%", "display": "inline-block"},
+        ),
+        html.Div(id='text-example-output', style={"width": "20%", "display": "inline-block", 'background-color': 'white'})
+    ]
+)
+
+@callback(
+    Output("spectrum", "figure"),
+    Output('pseudo_rgb', "figure"),
+    Input("pseudo_rgb", "relayoutData"),
+    State("color", "value"),
+    State("annotate", "value"),
+    State("spectrum", "figure")
+)
+def on_new_annotation(relayout_data, color, text, fig_spec):
+    shapes = (relayout_data or {}).get("shapes")
+    if not shapes:
+        return no_update
+    fig_spec = go.Figure(fig_spec)
+    
+    patched_fig = Patch()
+    
+    patched_fig['layout']['newshape']['line']['color'] = color['hex']
+
+    s = shapes[-1]
+
+    x0, x1 = sorted([max(0, min(w, int(s["x0"]))), max(0, min(w, int(s["x1"])))])
+    y0, y1 = sorted([max(0, min(h, int(s["y0"]))), max(0, min(h, int(s["y1"])))])
+
+    roi_cube = cube[y0:y1, x0:x1, :]
+    if roi_cube.size == 0:
+        return no_update
+
+    mean_spectrum = roi_cube.mean(axis=(0, 1))
+
+    fig_spec.add_trace(go.Scatter(
+        x=wavelengths,
+        y=mean_spectrum,
+        mode='lines',
+        name=text
+    ))
+
+    fig_spec.update_layout(
+        xaxis_title="Wavelength",
+        yaxis_title="Intensity",
+        title="ROI Mean Spectra"
+    )
+    return fig_spec, patched_fig
 
 @callback(
     Output(component_id='text-example-output', component_property='children'),
