@@ -46,8 +46,6 @@ RV-360-2359-2 = ".*akama.*RV-360-2359-2[.]tif"
 RV-360-6886 = ".*akama.*RV-360-6886[.]tif"
 '''
 
-toml_path = ''
-
 data = data_now(url, toml_txt)
 
 
@@ -62,33 +60,24 @@ import tomlkit
 
 
 # %%
-class FairDashboard():
-
-    def __init__(self, data_dict=None, toml_text=None):
-        '''Initialize FairDashboard instance'''
-        self.data_dict = data_dict
-        self.toml_text = toml_text
-        self.app = self._create_app()
-
-    def _create_app(self):
-        '''Creates the app and the app layout using dash'''
-        app = Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.SPACELAB])
-        app.layout = dbc.Container(
+def create_dashboard(data_dict: dict, toml_text: str) -> Dash:
+    
+    app = Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.SPACELAB])
+    app.layout = dbc.Container(
             [
-                dcc.Store(id='data_dict_store', data=self.data_dict),
-                dcc.Store(id='project_toml_store', data={'content': self.toml_text}),
+                dcc.Store(id='data_dict_store', data=data_dict),
+                dcc.Store(id='project_toml_store', data={'content': toml_text}),
                 html.H1("Dashboard Title"),
-                dcc.Dropdown(id='object_dropdown', options=list(self.data_dict['npz'].keys()), placeholder='Select Object Number'),
+                dcc.Dropdown(id='object_dropdown', options=list(data_dict['npz'].keys()), placeholder='Select Object Number'),
                 html.Div(id="container")
             ]
         )
-        return app
-        
-    @callback(
-        Output(component_id="container", component_property="children"),
-        Input(component_id="object_dropdown", component_property="value"),
-        State(component_id="data_dict_store", component_property="data"),
-        prevent_initial_call=True
+    
+    @app.callback(
+    Output(component_id="container", component_property="children"),
+    Input(component_id="object_dropdown", component_property="value"),
+    State(component_id="data_dict_store", component_property="data"),
+    prevent_initial_call=True
     )
     def _change_object(value: str, data_dict: dict):
         '''Change the visible pseudo_rgb'''
@@ -132,17 +121,17 @@ class FairDashboard():
             dbc.Row(dcc.Graph(id="mean_spectrum_graph", figure=fig_spec))
             ])
 
-    @callback(
+    @app.callback(
         Output(component_id="pseudo_rgb_graph", component_property="figure"),
         Input(component_id="colorpicker", component_property="value")
     )
-    def _on_color_select(color :dict):
+    def on_color_select(color :dict):
         patch = Patch()
         patch['layout']['newshape']['line']['color'] = color['hex']
         return patch
     
 
-    @callback(
+    @app.callback(
         Output(component_id="mean_spectrum_graph", component_property="figure"),
         Input(component_id="pseudo_rgb_graph", component_property="relayoutData"),
         State(component_id="mean_spectrum_graph", component_property="figure"),
@@ -152,7 +141,7 @@ class FairDashboard():
         State(component_id="annotation_text", component_property="value"),
         prevent_initial_call=True
     )
-    def _on_drawrect(relayout_data: dict, fig_spec: dict, data_dict: dict, value: str, color: dict, annotation_text: str):
+    def on_drawrect(relayout_data: dict, fig_spec: dict, data_dict: dict, value: str, color: dict, annotation_text: str):
         shapes = (relayout_data or {}).get("shapes")
         if not shapes:
             return no_update
@@ -188,7 +177,7 @@ class FairDashboard():
         
         return fig_spec
 
-    @callback(
+    @app.callback(
         Output(component_id="toml_download", component_property="data"),
         Input(component_id="save_btn", component_property="n_clicks"),
         State(component_id="pseudo_rgb_graph", component_property="figure"),
@@ -197,7 +186,7 @@ class FairDashboard():
         State(component_id="project_toml_store", component_property="data"),
         prevent_initial_call=True
     )
-    def _download_TOML_contents(n: int, rgb: dict, spec: dict, object_num: str, toml_dict: dict):
+    def download_TOML_contents(n: int, rgb: dict, spec: dict, object_num: str, toml_dict: dict):
         if toml_dict['content']:
             doc = tomlkit.parse(toml_dict['content'])
         else:
@@ -222,18 +211,15 @@ class FairDashboard():
 
         return dict(content=tomlkit.dumps(doc), filename="question.toml")
 
-    def run(self):
-        '''Launch the dashboard'''
-        self.app.run(jupyter_mode="external", debug=True)
+    return app
 
-# %%
-fd = FairDashboard(data_dict=data, toml_text=toml_txt)
+def run_app(data_dict: dict, toml_text: str):
+    app = create_dashboard(data_dict=data_dict, toml_text=toml_text)
+    app.run(jupyter_mode="external", debug=True)
 
-# %%
-fd.run()
 
 
 # %%
-def create_dashboard(data_dict: dict, toml_text: str) -> Dash:
-    return
+run_app(data_dict=data, toml_text=toml_txt)
 
+# %%
