@@ -57,6 +57,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 import tomlkit
+import base64
 
 
 # %%
@@ -114,6 +115,7 @@ def create_dashboard(data_dict: dict, toml_text: str) -> Dash:
                 dbc.Col([
                     daq.ColorPicker(id="colorpicker", label="ROI Line Color", value=dict(hex="#119DFF")),
                     dbc.Input(id="annotation_text", type="text", placeholder="annotation label"),
+                    dcc.Upload(id='toml_upload', children=dbc.Button("Upload ROI TOML", color="primary", className="mt-1")),
                     dbc.Button("Save ROI's", id="save_btn", color="success", className="mt-1"),
                     dcc.Download(id="toml_download")
                     ], width=4)
@@ -178,6 +180,65 @@ def create_dashboard(data_dict: dict, toml_text: str) -> Dash:
         return fig_spec
 
     @app.callback(
+        Output(component_id="mean_spectrum_graph", component_property="figure", allow_duplicate=True),
+        Output(component_id="pseudo_rgb_graph", component_property="figure", allow_duplicate=True),
+        Input(component_id="toml_upload", component_property="contents"),
+        State(component_id="object_dropdown", component_property="value"),
+        State(component_id="mean_spectrum_graph", component_property="figure"),
+        State(component_id="data_dict_store", component_property="data"),
+        prevent_initial_call=True
+    )
+    def upload_TOML(contents, object_num: str, fig_spec: dict, data_dict: dict):
+        npz_file = data_dict['npz'][object_num][0]
+        npz = np.load(npz_file)
+        cube = npz['image'][:,:, ::-1].transpose(1, 2, 0)
+        wavelengths = npz['wavelengths']
+
+        content_type, content_string = contents.split(',')
+
+        decoded_bytes = base64.b64decode(content_string)
+
+        toml_text = decoded_bytes.decode('utf-8')
+
+        parsed_data = tomlkit.parse(toml_text)
+
+        fig_spec = go.Figure(fig_spec)
+
+        rgb_patch = Patch()
+
+        rois = parsed_data.get('roi', {}).get(object_num, {})
+
+        for roi_name, roi_dict in rois.items():
+            x0, x1 = int(roi_dict['x0']), int(roi_dict['x1'])
+            y0, y1 = int(roi_dict['y0']), int(roi_dict['y1'])
+            color = roi_dict.get('color', '#119DFF')
+
+            roi_cube = cube[y0:y1, x0:x1, :]
+            mean_spectrum = roi_cube.mean(axis=(0, 1))
+
+            fig_spec.add_trace(go.Scatter(
+                x=wavelengths,
+                y=mean_spectrum,
+                mode='lines',
+                name=roi_name,
+                line_color=color
+            ))
+
+            new_shape = {
+                "type": "rect",
+                "x0": x0,
+                "x1": x1,
+                "y0": y0,
+                "y1": y1,
+                "line": {"color": color, "width": 4},
+                "fillcolor": "rgba(0,0,0,0)"
+            }
+            rgb_patch["layout"]["shapes"].append(new_shape)
+
+        return fig_spec, rgb_patch
+
+
+    @app.callback(
         Output(component_id="toml_download", component_property="data"),
         Input(component_id="save_btn", component_property="n_clicks"),
         State(component_id="pseudo_rgb_graph", component_property="figure"),
@@ -221,5 +282,33 @@ def run_app(data_dict: dict, toml_text: str):
 
 # %%
 run_app(data_dict=data, toml_text=toml_txt)
+
+
+# %%
+def create_app(data: dict) -> Dash:
+    app = Dash(__name__)
+    app.layout = html.Div([
+        dcc.Store(id="data", data=data),
+        dcc.Button("Click me", id="button"),
+        html.Div(id="number")
+    ])
+
+    @app.callback(
+        Output(component_id="number", component_property="children"),
+        Input(component_id="button", component_property="n_clicks"),
+        State(component_id="data", component_property="data")
+    )
+    def show_number(button_n_clicks: int, data: dict) -> str:
+        return 
+
+    return app
+
+def run_npz_app(data: dict) -> None:
+    app = create_app(data)
+    app.run(debug=True)
+
+
+# %%
+run_app(data)
 
 # %%
