@@ -1,0 +1,33 @@
+
+# here are the 10 corresponding spectral data cubes processed by Gauthier and Tessa 
+[data.npz] 
+RV-1-4468-544 = ".*RIS/interim/.*RV-1-4468-544.*[.]npz"
+RV-1-4469-484 = ".*RIS/interim/.*RV-1-4469-484.*[.]npz"
+RV-1-4469-58 = ".*RIS/interim/.*RV-1-4469-58.*[.]npz"
+RV-1-4469-x6 = ".*RIS/interim/.*RV-1-4469-x6.*[.]npz"
+RV-1-4469Q = ".*RIS/interim/.*RV-1-4469Q.*[.]npz"
+RV-1-4470-12 = ".*RIS/interim/.*RV-1-4470-12.*[.]npz"
+RV-1-4470-27 = ".*RIS/interim/.*RV-1-4470-27.*[.]npz"
+RV-360-2345g = ".*RIS/interim/.*RV-360-2345g.*[.]npz"
+RV-360-2359-2 = ".*RIS/interim/.*RV-360-2359-2.*[.]npz"
+RV-360-6886 = ".*RIS/interim/.*RV-360-6886.*[.]npz"
+
+[data.tif]
+# these are regexes that download all .tif files per object number 
+RV-1-4468-544 = ".*akama.*RV-1-4468-544[.]tif"
+RV-1-4469-484 = ".*akama.*RV-1-4469-484[.]tif"
+RV-1-4469-58 = ".*akama.*RV-1-4469-58[.]tif"
+RV-1-4469-x6 = ".*akama.*RV-1-4469-x6[.]tif"
+RV-1-4469Q = ".*akama.*RV-1-4469Q[.]tif"
+RV-1-4470-12 = ".*akama.*RV-1-4470-12[.]tif"
+RV-1-4470-27 = ".*akama.*1-4470-27[.]tif"      # TIF NAME WITHOUT RV prefix!  
+RV-360-2345g = ".*akama.*RV-360-2345-?g[.]tif"
+RV-360-2359-2 = ".*akama.*RV-360-2359-2[.]tif"
+RV-360-6886 = ".*akama.*RV-360-6886[.]tif"
+
+[roi.RV-1-4469-484.Hair]
+color = "#3c444a"
+x0 = 267.83921567855344
+x1 = 294.2714737430696
+y0 = 135.70388045772427
+y1 = 149.69742884482105

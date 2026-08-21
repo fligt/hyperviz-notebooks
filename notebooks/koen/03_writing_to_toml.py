@@ -19,6 +19,8 @@ import plotly.express as px
 from fairdatanow import data_now
 import plotly.graph_objects as go
 import numpy as np
+import tomlkit
+import base64
 
 url = 'https://laboppad.nl/ukiyo-e-world' 
 
@@ -70,6 +72,25 @@ app.layout = html.Div(
     [
         html.H2("Mean Spectrum ROI's"),
         html.Div(
+            dcc.Upload(
+            id='upload_data',
+            children=html.Div([
+                'Drag and Drop or ',
+                html.A('Select Files')
+            ]),
+            style={
+                'width': '100%',
+                'height': '60px',
+                'lineHeight': '60px',
+                'borderWidth': '1px',
+                'borderStyle': 'dashed',
+                'borderRadius': '5px',
+                'textAlign': 'center',
+                'margin': '10px'
+            },
+            )
+        ),
+        html.Div(
             [daq.ColorPicker(
             id="colorpicker",
             label="ROI Line Color",
@@ -100,9 +121,18 @@ def on_annotation_option(color: dict) -> Patch():
     Input(component_id="pseudo_rgb_graph", component_property="relayoutData"),
     State(component_id="colorpicker", component_property="value"),
     State(component_id="annotation_text", component_property="value"),
-    State(component_id="mean_spectrum_graph", component_property="figure")
+    State(component_id="mean_spectrum_graph", component_property="figure"),
+    State(component_id="upload_data", component_property="contents"),
+    State(component_id="pseudo_rgb_graph", component_property="figure")
 )
-def on_drawrect(relayout_data: dict, color: dict, annotation_text: str, mean_spectrum_figure: dict) -> go.Figure() | dash.no_update():
+def on_drawrect(relayout_data: dict, color: dict, annotation_text: str, mean_spectrum_figure: dict, toml_file, graph) -> go.Figure() | dash.no_update():
+    if toml_file:
+        content_type, content_string = toml_file.split(",")
+
+        toml_string = base64.b64decode(content_string).decode("utf-8")
+
+        print(toml_string)
+    print(graph["layout"]['shapes'])
     # Parse latest shape
     shapes = (relayout_data or {}).get("shapes")
     if not shapes:
@@ -131,25 +161,56 @@ def on_drawrect(relayout_data: dict, color: dict, annotation_text: str, mean_spe
         line_color=color['hex']
     ))
 
-    #print(mean_spectrum_figure["data"][-1])
     # Update the look of the mean spectrum graph
     mean_spectrum_figure.update_layout(
         xaxis_title="Wavelength",
         yaxis_title="Intensity",
         title="ROI Mean Spectra"
     )
+
+    # TOML interaction
+    doc = tomlkit.document()
+
+    roi_table = tomlkit.table()
+
+    sub_tab = tomlkit.table()
+    sub_tab['color'] = color['hex']
+    sub_tab['x0'] = x0
+    sub_tab['x1'] = x1
+    sub_tab['y0'] = y0
+    sub_tab['y1'] = y1
+
+    if annotation_text:
+        roi_table[annotation_text] = sub_tab
+
+    # Need to find a way to fix double annotations
+    else:
+        n = x0+x1+y0+y1
+        roi_table[str(n)] = sub_tab
+
+    doc['roi'] = roi_table
+
+    print(tomlkit.dumps(doc))
     
     return mean_spectrum_figure
 
 
 app.run(jupyter_mode="external", debug=True)
 
-# %% [markdown]
-# # TODO:
-# 1) ZOEKEN WAAR SHAPES IN DE DCC GRAPH STAAN
-# 2) Write the `color` of the ROI and the `coordinates` to a TOML file which you can parse when entering the dashboard
-# 3) add datashaded tif file
-# 4) Alert when changing shape of ROI: NOT SUPPORTED
 
 # %% [markdown]
+# Now able to read and write using `tomlkit`.
 #
+# The question is: In what way do users give their toml file and do we want to directly update this file or make the output downloadable?
+#
+
+# %% [markdown]
+# dashboard = fair_dashboardnow('/project.toml')
+#
+# dashboard = fdn()
+#
+# app = Dash()
+# app.layout = html.Div([
+#     html.Button("Download Text", id="btn-download-txt"),
+#     dcc.Download(id="download-text")
+# ])
