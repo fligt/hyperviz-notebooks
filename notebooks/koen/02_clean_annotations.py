@@ -88,10 +88,9 @@ app.layout = html.Div(
 
 @callback(
     Output(component_id="pseudo_rgb_graph", component_property="figure"),
-    Input(component_id="colorpicker", component_property="value"),
-    Input(component_id="annotation_text", component_property="value")
+    Input(component_id="colorpicker", component_property="value")
 )
-def on_annotation_option(color: dict, text: str) -> dash.Patch():
+def on_annotation_option(color: dict) -> dash.Patch():
     patch = Patch()
     patch['layout']['newshape']['line']['color'] = color['hex']
     return patch
@@ -103,7 +102,7 @@ def on_annotation_option(color: dict, text: str) -> dash.Patch():
     State(component_id="annotation_text", component_property="value"),
     State(component_id="mean_spectrum_graph", component_property="figure")
 )
-def on_drawrect(relayout_data: dict, color: dict, text: str, mean_spectrum_figure: dict) -> go.Figure() | dash.no_update():
+def on_drawrect(relayout_data: dict, color: dict, text: int, mean_spectrum_figure: dict) -> go.Figure() | dash.no_update():
     # Parse latest shape
     shapes = (relayout_data or {}).get("shapes")
     if not shapes:
