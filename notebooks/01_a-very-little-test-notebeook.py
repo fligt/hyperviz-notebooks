@@ -13,15 +13,15 @@
 # ---
 
 # %% [markdown]
-# # A very little test notebook 
+# # A very little test notebook
 
 # %% [markdown]
-# So far I have done a few things: 
+# So far I have done a few things:
 #
-# 1) Created an empty repo `hyperviz-notebooks` 
-# 2) Cloned onto my pc 
-# 3) Initialize with `uv init` within the codium terminal 
-# 4) Installed jupytext with `uv add --dev jupytext` 
+# 1) Created an empty repo `hyperviz-notebooks`
+# 2) Cloned onto my pc
+# 3) Initialize with `uv init` within the codium terminal
+# 4) Installed jupytext with `uv add --dev jupytext`
 # 5) Installed the codium Jupytext Sync extension
 #
 

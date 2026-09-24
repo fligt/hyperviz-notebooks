@@ -13,17 +13,14 @@
 # ---
 
 # %%
-from dash import Dash, dcc, html, Input, Output, no_update, callback, State, Patch
-import plotly.express as px
+import numpy as np
+from dash import Dash, Input, Output, html
 from fairdatanow import data_now
 from skimage import io
-import datashader as ds
-import xarray as xr
-import numpy as np
 
-url = 'https://laboppad.nl/ukiyo-e-world' 
+url = "https://laboppad.nl/ukiyo-e-world"
 
-toml_txt = '''
+toml_txt = """
 # here are the 10 corresponding spectral data cubes processed by Gauthier and Tessa 
 
 [data.tif]
@@ -38,19 +35,17 @@ RV-1-4470-27 = ".*akama.*1-4470-27[.]tif"      # TIF NAME WITHOUT RV prefix!
 RV-360-2345g = ".*akama.*RV-360-2345-?g[.]tif"
 RV-360-2359-2 = ".*akama.*RV-360-2359-2[.]tif"
 RV-360-6886 = ".*akama.*RV-360-6886[.]tif"
-'''
+"""
 
 data = data_now(url, toml_txt)
 
 # %%
 import base64
 from io import BytesIO
-import numpy as np
-from dash import Dash, html, Input, Output
-from PIL import Image
-from skimage import io
 
-tif_file = data['tif']['RV-1-4470-27'][0]
+from PIL import Image
+
+tif_file = data["tif"]["RV-1-4470-27"][0]
 img_array = io.imread(tif_file)
 
 if img_array.dtype == np.uint16:
@@ -73,8 +68,8 @@ app.layout = html.Div(
                 "transform-origin": "0 0",
                 "pointer-events": "none",
                 "display": "block",
-                "image-rendering": "pixelated"
-            }
+                "image-rendering": "pixelated",
+            },
         )
     ],
     style={
@@ -83,8 +78,8 @@ app.layout = html.Div(
         "overflow": "hidden",
         "position": "relative",
         "cursor": "grab",
-        "background-color": "#1e1e1e"
-    }
+        "background-color": "#1e1e1e",
+    },
 )
 
 app.clientside_callback(
@@ -134,10 +129,10 @@ app.clientside_callback(
     }
     """,
     Output("viewport", "id"),
-    Input("viewport", "id")
+    Input("viewport", "id"),
 )
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(jupyter_mode="external", debug=True)
 
 # %%

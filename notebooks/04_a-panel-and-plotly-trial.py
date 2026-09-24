@@ -14,20 +14,20 @@
 # ---
 
 # %% [markdown]
-# # A panel and plotly trial 
+# # A panel and plotly trial
 
 # %% [markdown]
-# Well, actually I can not get a panel plotly pane to display. Alternatively the bokeh pane seems to work fine....  
+# Well, actually I can not get a panel plotly pane to display. Alternatively the bokeh pane seems to work fine....
 
 # %% [markdown]
 # Let's start by a look at the panel documentation: https://panel.holoviz.org/reference/index.html# and dive straight into plotly: https://panel.holoviz.org/reference/panes/Plotly.html
 
 # %%
-import panel as pn
 import numpy as np
+import panel as pn
 import plotly.graph_objs as go
 
-pn.extension("plotly") 
+pn.extension("plotly")
 
 # %%
 xx = np.linspace(-3.5, 3.5, 100)
@@ -35,7 +35,7 @@ yy = np.linspace(-3.5, 3.5, 100)
 x, y = np.meshgrid(xx, yy)
 z = np.exp(-((x - 1) ** 2) - y**2) - (x**3 + y**4 - x / 5) * np.exp(-(x**2 + y**2))
 
-surface=go.Surface(z=z)
+surface = go.Surface(z=z)
 fig = go.Figure(data=[surface])
 
 fig.update_layout(
@@ -54,6 +54,7 @@ plotly_pane
 # Retrieved 2026-08-11, License - CC BY-SA 4.0
 
 import plotly.graph_objects as go
+
 fig = go.Figure()
 fig.show()
 
@@ -65,47 +66,61 @@ pn.Row(plotly_pane)
 # Somehow the `plotly_pane` does not appear. Let's try with a bokeh pane: https://panel.holoviz.org/reference/panes/Bokeh.html
 
 # %%
-import panel as pn
 import numpy as np
 import pandas as pd
+import panel as pn
 
 pn.extension()
 
 # %%
 from math import pi
 
-from bokeh.palettes import Category20c, Category20
+from bokeh.palettes import Category20c
 from bokeh.plotting import figure
 from bokeh.transform import cumsum
 
 x = {
-    'United States': 157,
-    'United Kingdom': 93,
-    'Japan': 89,
-    'China': 63,
-    'Germany': 44,
-    'India': 42,
-    'Italy': 40,
-    'Australia': 35,
-    'Brazil': 32,
-    'France': 31,
-    'Taiwan': 31,
-    'Spain': 29
+    "United States": 157,
+    "United Kingdom": 93,
+    "Japan": 89,
+    "China": 63,
+    "Germany": 44,
+    "India": 42,
+    "Italy": 40,
+    "Australia": 35,
+    "Brazil": 32,
+    "France": 31,
+    "Taiwan": 31,
+    "Spain": 29,
 }
 
-data = pd.Series(x).reset_index(name='value').rename(columns={'index':'country'})
-data['angle'] = data['value']/data['value'].sum() * 2*pi
-data['color'] = Category20c[len(x)]
+data = pd.Series(x).reset_index(name="value").rename(columns={"index": "country"})
+data["angle"] = data["value"] / data["value"].sum() * 2 * pi
+data["color"] = Category20c[len(x)]
 
-p = figure(height=350, title="Pie Chart", toolbar_location=None,
-           tools="hover", tooltips="@country: @value", x_range=(-0.5, 1.0))
+p = figure(
+    height=350,
+    title="Pie Chart",
+    toolbar_location=None,
+    tools="hover",
+    tooltips="@country: @value",
+    x_range=(-0.5, 1.0),
+)
 
-r = p.wedge(x=0, y=1, radius=0.4,
-        start_angle=cumsum('angle', include_zero=True), end_angle=cumsum('angle'),
-        line_color="white", fill_color='color', legend_field='country', source=data)
+r = p.wedge(
+    x=0,
+    y=1,
+    radius=0.4,
+    start_angle=cumsum("angle", include_zero=True),
+    end_angle=cumsum("angle"),
+    line_color="white",
+    fill_color="color",
+    legend_field="country",
+    source=data,
+)
 
-p.axis.axis_label=None
-p.axis.visible=False
+p.axis.axis_label = None
+p.axis.visible = False
 p.grid.grid_line_color = None
 
 bokeh_pane = pn.pane.Bokeh(p, theme="dark_minimal")
@@ -117,29 +132,37 @@ from bokeh.models import ColumnDataSource, Slider, TextInput
 
 # Set up data
 N = 200
-x = np.linspace(0, 4*np.pi, N)
+x = np.linspace(0, 4 * np.pi, N)
 y = np.sin(x)
 source = ColumnDataSource(data=dict(x=x, y=y))
 
 # Set up plot
-plot = figure(height=400, width=400, title="my sine wave",
-              tools="crosshair,pan,reset,save,wheel_zoom",
-              x_range=[0, 4*np.pi], y_range=[-2.5, 2.5])
+plot = figure(
+    height=400,
+    width=400,
+    title="my sine wave",
+    tools="crosshair,pan,reset,save,wheel_zoom",
+    x_range=[0, 4 * np.pi],
+    y_range=[-2.5, 2.5],
+)
 
-plot.line('x', 'y', source=source, line_width=3, line_alpha=0.6)
+plot.line("x", "y", source=source, line_width=3, line_alpha=0.6)
 
 # Set up widgets
-text = TextInput(title="title", value='my sine wave')
+text = TextInput(title="title", value="my sine wave")
 offset = Slider(title="offset", value=0.0, start=-5.0, end=5.0, step=0.1)
 amplitude = Slider(title="amplitude", value=1.0, start=-5.0, end=5.0, step=0.1)
-phase = Slider(title="phase", value=0.0, start=0.0, end=2*np.pi)
+phase = Slider(title="phase", value=0.0, start=0.0, end=2 * np.pi)
 freq = Slider(title="frequency", value=1.0, start=0.1, end=5.1, step=0.1)
+
 
 # Set up callbacks
 def update_title(attrname, old, new):
     plot.title.text = text.value
 
-text.on_change('value', update_title)
+
+text.on_change("value", update_title)
+
 
 def update_data(attrname, old, new):
 
@@ -150,13 +173,14 @@ def update_data(attrname, old, new):
     k = freq.value
 
     # Generate the new curve
-    x = np.linspace(0, 4*np.pi, N)
-    y = a*np.sin(k*x + w) + b
+    x = np.linspace(0, 4 * np.pi, N)
+    y = a * np.sin(k * x + w) + b
 
     source.data = dict(x=x, y=y)
 
+
 for w in [offset, amplitude, phase, freq]:
-    w.on_change('value', update_data)
+    w.on_change("value", update_data)
 
 # Set up layouts and add to document
 inputs = column(text, offset, amplitude, phase, freq)
@@ -166,11 +190,11 @@ bokeh_app = pn.pane.Bokeh(row(inputs, plot, width=800))
 bokeh_app
 
 # %% [markdown]
-# This bokeh pane actually looks quite snappy. How about 
+# This bokeh pane actually looks quite snappy. How about
 
 # %%
-from bokeh.plotting import figure 
-import numpy as np 
+import numpy as np
+from bokeh.plotting import figure
 
 # %%
 im = np.random.rand(100, 100)
@@ -180,7 +204,6 @@ im.shape
 
 # %%
 import numpy as np
-
 from bokeh.plotting import figure, show
 
 x = np.linspace(0, 10, 300)

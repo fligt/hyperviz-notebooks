@@ -13,16 +13,16 @@
 # ---
 
 # %%
-from dash import Dash, dcc, html, Input, Output, no_update, callback, State, Patch
 import dash_daq as daq
-import plotly.express as px
-from fairdatanow import data_now
-import plotly.graph_objects as go
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from dash import Dash, Input, Output, Patch, State, callback, dcc, html, no_update
+from fairdatanow import data_now
 
-url = 'https://laboppad.nl/ukiyo-e-world' 
+url = "https://laboppad.nl/ukiyo-e-world"
 
-toml_txt = '''
+toml_txt = """
 # here are the 10 corresponding spectral data cubes processed by Gauthier and Tessa 
 [data.npz] 
 RV-1-4468-544 = ".*RIS/interim/.*RV-1-4468-544.*[.]npz"
@@ -48,19 +48,19 @@ RV-1-4470-27 = ".*akama.*1-4470-27[.]tif"      # TIF NAME WITHOUT RV prefix!
 RV-360-2345g = ".*akama.*RV-360-2345-?g[.]tif"
 RV-360-2359-2 = ".*akama.*RV-360-2359-2[.]tif"
 RV-360-6886 = ".*akama.*RV-360-6886[.]tif"
-'''
+"""
 
 data = data_now(url, toml_txt)
 
-tif_file = data['tif']['RV-1-4470-27'][0]
-npz_file = data['npz']['RV-1-4470-27'][0]
+tif_file = data["tif"]["RV-1-4470-27"][0]
+npz_file = data["npz"]["RV-1-4470-27"][0]
 
 npz = np.load(npz_file)
-cube = npz['image'][:,:, ::-1].transpose(1, 2, 0)
-wavelengths = npz['wavelengths'] 
+cube = npz["image"][:, :, ::-1].transpose(1, 2, 0)
+wavelengths = npz["wavelengths"]
 h, w, d = cube.shape
 bounds = [0, 0, w, h]
-pseudo_rgb = cube[:,:, [70, 53, 19]] 
+pseudo_rgb = cube[:, :, [70, 53, 19]]
 
 # %%
 fig_img = px.imshow(pseudo_rgb, binary_string=True).update_layout(dragmode="drawrect")
@@ -70,48 +70,67 @@ app.layout = html.Div(
     [
         html.H2("Mean Spectrum ROI's"),
         html.Div(
-            [daq.ColorPicker(
-            id="colorpicker",
-            label="ROI Line Color",
-            value=dict(hex="#119DFF"),
-            ),
-            dcc.Input(id="annotation_text", type="text", placeholder="annotation text")]
+            [
+                daq.ColorPicker(
+                    id="colorpicker",
+                    label="ROI Line Color",
+                    value=dict(hex="#119DFF"),
+                ),
+                dcc.Input(
+                    id="annotation_text", type="text", placeholder="annotation text"
+                ),
+            ]
         ),
         html.Div(
-            [dcc.Graph(id="pseudo_rgb_graph", figure=fig_img, config={"modeBarButtonsToAdd": ["drawrect", "eraseshape"], "scrollZoom":True})]
+            [
+                dcc.Graph(
+                    id="pseudo_rgb_graph",
+                    figure=fig_img,
+                    config={
+                        "modeBarButtonsToAdd": ["drawrect", "eraseshape"],
+                        "scrollZoom": True,
+                    },
+                )
+            ]
         ),
-        html.Div(
-            [dcc.Graph(id="mean_spectrum_graph", figure={})]
-        )
+        html.Div([dcc.Graph(id="mean_spectrum_graph", figure={})]),
     ]
 )
 
+
 @callback(
     Output(component_id="pseudo_rgb_graph", component_property="figure"),
-    Input(component_id="colorpicker", component_property="value")
+    Input(component_id="colorpicker", component_property="value"),
 )
 def on_annotation_option(color: dict) -> Patch():
     patch = Patch()
-    patch['layout']['newshape']['line']['color'] = color['hex']
+    patch["layout"]["newshape"]["line"]["color"] = color["hex"]
     return patch
+
 
 @callback(
     Output(component_id="mean_spectrum_graph", component_property="figure"),
     Input(component_id="pseudo_rgb_graph", component_property="relayoutData"),
     State(component_id="colorpicker", component_property="value"),
     State(component_id="annotation_text", component_property="value"),
-    State(component_id="mean_spectrum_graph", component_property="figure")
+    State(component_id="mean_spectrum_graph", component_property="figure"),
 )
-def on_drawrect(relayout_data: dict, color: dict, annotation_text: str, mean_spectrum_figure: dict) -> go.Figure() | dash.no_update():
+def on_drawrect(
+    relayout_data: dict, color: dict, annotation_text: str, mean_spectrum_figure: dict
+) -> go.Figure() | dash.no_update():
     # Parse latest shape
     shapes = (relayout_data or {}).get("shapes")
     if not shapes:
         return no_update
     shape = shapes[-1]
-    
+
     # Read coordinates of the selected ROI from the shape
-    x0, x1 = sorted([max(0, min(w, int(shape["x0"]))), max(0, min(w, int(shape["x1"])))])
-    y0, y1 = sorted([max(0, min(h, int(shape["y0"]))), max(0, min(h, int(shape["y1"])))])
+    x0, x1 = sorted(
+        [max(0, min(w, int(shape["x0"]))), max(0, min(w, int(shape["x1"])))]
+    )
+    y0, y1 = sorted(
+        [max(0, min(h, int(shape["y0"]))), max(0, min(h, int(shape["y1"])))]
+    )
 
     # Get the mean spectrum of the selected ROI
     roi_cube = cube[y0:y1, x0:x1, :]
@@ -121,24 +140,24 @@ def on_drawrect(relayout_data: dict, color: dict, annotation_text: str, mean_spe
 
     # Turn the graph dictionary into a graph object
     mean_spectrum_figure = go.Figure(mean_spectrum_figure)
-    
-    # Add a line to the mean_spectrum_figure graph object
-    mean_spectrum_figure.add_trace(go.Scatter(
-        x=wavelengths,
-        y=mean_spectrum,
-        mode='lines',
-        name=annotation_text,
-        line_color=color['hex']
-    ))
 
-    #print(mean_spectrum_figure["data"][-1])
+    # Add a line to the mean_spectrum_figure graph object
+    mean_spectrum_figure.add_trace(
+        go.Scatter(
+            x=wavelengths,
+            y=mean_spectrum,
+            mode="lines",
+            name=annotation_text,
+            line_color=color["hex"],
+        )
+    )
+
+    # print(mean_spectrum_figure["data"][-1])
     # Update the look of the mean spectrum graph
     mean_spectrum_figure.update_layout(
-        xaxis_title="Wavelength",
-        yaxis_title="Intensity",
-        title="ROI Mean Spectra"
+        xaxis_title="Wavelength", yaxis_title="Intensity", title="ROI Mean Spectra"
     )
-    
+
     return mean_spectrum_figure
 
 

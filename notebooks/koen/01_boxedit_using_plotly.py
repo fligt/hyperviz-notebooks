@@ -18,20 +18,18 @@
 # https://plotly.com/python/selections/
 
 # %%
-from dash import Dash, dcc, html, Input, Output, no_update, callback, State, Patch
 import dash_daq as daq
-import plotly.express as px
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from dash import Dash, Input, Output, Patch, State, callback, dcc, html, no_update
 from fairdatanow import data_now
 from skimage import io
-import datashader as ds
-import pandas as pd
-import plotly.graph_objects as go
 
 # %%
-url = 'https://laboppad.nl/ukiyo-e-world' 
+url = "https://laboppad.nl/ukiyo-e-world"
 
-toml_txt = '''
+toml_txt = """
 # here are the 10 corresponding spectral data cubes processed by Gauthier and Tessa 
 [data.npz] 
 RV-1-4468-544 = ".*RIS/interim/.*RV-1-4468-544.*[.]npz"
@@ -57,24 +55,24 @@ RV-1-4470-27 = ".*akama.*1-4470-27[.]tif"      # TIF NAME WITHOUT RV prefix!
 RV-360-2345g = ".*akama.*RV-360-2345-?g[.]tif"
 RV-360-2359-2 = ".*akama.*RV-360-2359-2[.]tif"
 RV-360-6886 = ".*akama.*RV-360-6886[.]tif"
-'''
+"""
 
 # %%
 data = data_now(url, toml_txt)
 
 # %%
-tif_file = data['tif']['RV-1-4470-27'][0]
+tif_file = data["tif"]["RV-1-4470-27"][0]
 
 # %%
-npz_file = data['npz']['RV-1-4470-27'][0]
+npz_file = data["npz"]["RV-1-4470-27"][0]
 
 # %%
 npz = np.load(npz_file)
-cube = npz['image'][:,:, ::-1].transpose(1, 2, 0)
-wavelengths = npz['wavelengths'] 
+cube = npz["image"][:, :, ::-1].transpose(1, 2, 0)
+wavelengths = npz["wavelengths"]
 h, w, d = cube.shape
 bounds = [0, 0, w, h]
-pseudo_rgb = cube[:,:, [70, 53, 19]] 
+pseudo_rgb = cube[:, :, [70, 53, 19]]
 
 # %% [markdown]
 # I'll try to apply the following tutorial on our own npz cubes: https://dash.plotly.com/annotations
@@ -84,9 +82,13 @@ pseudo_rgb = cube[:,:, [70, 53, 19]]
 
 # Base figures
 img = io.imread(tif_file)
-fig_tif  = px.imshow(img)
+fig_tif = px.imshow(img)
 fig_img = px.imshow(pseudo_rgb, binary_string=True).update_layout(dragmode="drawrect")
-fig_spec = px.line(x=wavelengths, y=cube.mean(axis=(0, 1)), labels={"x": "Wavelength", "y": "Intensity"})
+fig_spec = px.line(
+    x=wavelengths,
+    y=cube.mean(axis=(0, 1)),
+    labels={"x": "Wavelength", "y": "Intensity"},
+)
 
 app = Dash(__name__)
 app.layout = html.Div(
@@ -97,31 +99,51 @@ app.layout = html.Div(
         #     style={"width": "30%", "display": "inline-block"},
         # ),
         html.Div(
-            [daq.ColorPicker(
-            id='color',
-            label='Line Color',
-            value=dict(hex='#119DFF'),
-            ),
-            dcc.Input(id="annotate", type="text", placeholder="annotation")], 
-            style={"width": "30%", 'background-color': 'white'}),
+            [
+                daq.ColorPicker(
+                    id="color",
+                    label="Line Color",
+                    value=dict(hex="#119DFF"),
+                ),
+                dcc.Input(id="annotate", type="text", placeholder="annotation"),
+            ],
+            style={"width": "30%", "background-color": "white"},
+        ),
         html.Div(
-            [dcc.Graph(id="pseudo_rgb", figure=fig_img, config={"modeBarButtonsToAdd": ["drawrect", "eraseshape"], 'scrollZoom':True})],
+            [
+                dcc.Graph(
+                    id="pseudo_rgb",
+                    figure=fig_img,
+                    config={
+                        "modeBarButtonsToAdd": ["drawrect", "eraseshape"],
+                        "scrollZoom": True,
+                    },
+                )
+            ],
             style={"width": "30%", "display": "inline-block"},
         ),
         html.Div(
             [dcc.Graph(id="spectrum", figure=fig_spec)],
             style={"width": "40%", "display": "inline-block"},
         ),
-        html.Div(id='text-example-output', style={"width": "20%", "display": "inline-block", 'background-color': 'white'})
+        html.Div(
+            id="text-example-output",
+            style={
+                "width": "20%",
+                "display": "inline-block",
+                "background-color": "white",
+            },
+        ),
     ]
 )
 
+
 @callback(
     Output("spectrum", "figure"),
-    Output('pseudo_rgb', "figure"),
+    Output("pseudo_rgb", "figure"),
     Input("pseudo_rgb", "relayoutData"),
     State("color", "value"),
-    State("annotate", "value")
+    State("annotate", "value"),
 )
 def on_new_annotation(relayout_data, color, text):
     shapes = (relayout_data or {}).get("shapes")
@@ -129,10 +151,10 @@ def on_new_annotation(relayout_data, color, text):
         return no_update
 
     fig = go.Figure()
-    
+
     patched_fig = Patch()
-    
-    patched_fig['layout']['newshape']['line']['color'] = color['hex']
+
+    patched_fig["layout"]["newshape"]["line"]["color"] = color["hex"]
 
     for i, s in enumerate(shapes):
         x0, x1 = sorted([max(0, min(w, int(s["x0"]))), max(0, min(w, int(s["x1"])))])
@@ -144,27 +166,26 @@ def on_new_annotation(relayout_data, color, text):
 
         mean_spectrum = roi_cube.mean(axis=(0, 1))
 
-        fig.add_trace(go.Scatter(
-            x=wavelengths,
-            y=mean_spectrum,
-            mode='lines',
-            name=f'{i + 1} {text}'
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=wavelengths, y=mean_spectrum, mode="lines", name=f"{i + 1} {text}"
+            )
+        )
 
     fig.update_layout(
-        xaxis_title="Wavelength",
-        yaxis_title="Intensity",
-        title="ROI Mean Spectra"
+        xaxis_title="Wavelength", yaxis_title="Intensity", title="ROI Mean Spectra"
     )
     return fig, patched_fig
 
+
 @callback(
-    Output(component_id='text-example-output', component_property='children'),
-    Input('pseudo_rgb', 'clickData'),
-    prevent_initial_call=True
+    Output(component_id="text-example-output", component_property="children"),
+    Input("pseudo_rgb", "clickData"),
+    prevent_initial_call=True,
 )
 def on_rgb_click(click_data):
     return str(click_data)
+
 
 if __name__ == "__main__":
     app.run(debug=True)
@@ -172,7 +193,7 @@ if __name__ == "__main__":
 # %%
 # Base figures
 img = io.imread(tif_file)
-fig_tif  = px.imshow(img)
+fig_tif = px.imshow(img)
 fig_img = px.imshow(pseudo_rgb, binary_string=True).update_layout(dragmode="drawrect")
 fig_spec = go.Figure()
 
@@ -185,42 +206,62 @@ app.layout = html.Div(
         #     style={"width": "30%", "display": "inline-block"},
         # ),
         html.Div(
-            [daq.ColorPicker(
-            id='color',
-            label='Line Color',
-            value=dict(hex='#119DFF'),
-            ),
-            dcc.Input(id="annotate", type="text", placeholder="annotation")], 
-            style={"width": "30%", 'background-color': 'white'}),
+            [
+                daq.ColorPicker(
+                    id="color",
+                    label="Line Color",
+                    value=dict(hex="#119DFF"),
+                ),
+                dcc.Input(id="annotate", type="text", placeholder="annotation"),
+            ],
+            style={"width": "30%", "background-color": "white"},
+        ),
         html.Div(
-            [dcc.Graph(id="pseudo_rgb", figure=fig_img, config={"modeBarButtonsToAdd": ["drawrect", "eraseshape"], 'scrollZoom':True})],
+            [
+                dcc.Graph(
+                    id="pseudo_rgb",
+                    figure=fig_img,
+                    config={
+                        "modeBarButtonsToAdd": ["drawrect", "eraseshape"],
+                        "scrollZoom": True,
+                    },
+                )
+            ],
             style={"width": "30%", "display": "inline-block"},
         ),
         html.Div(
             [dcc.Graph(id="spectrum", figure={})],
             style={"width": "40%", "display": "inline-block"},
         ),
-        html.Div(id='text-example-output', style={"width": "20%", "display": "inline-block", 'background-color': 'white'})
+        html.Div(
+            id="text-example-output",
+            style={
+                "width": "20%",
+                "display": "inline-block",
+                "background-color": "white",
+            },
+        ),
     ]
 )
 
+
 @callback(
     Output("spectrum", "figure"),
-    Output('pseudo_rgb', "figure"),
+    Output("pseudo_rgb", "figure"),
     Input("pseudo_rgb", "relayoutData"),
     State("color", "value"),
     State("annotate", "value"),
-    State("spectrum", "figure")
+    State("spectrum", "figure"),
 )
 def on_new_annotation(relayout_data, color, text, fig_spec):
     shapes = (relayout_data or {}).get("shapes")
     if not shapes:
         return no_update
     fig_spec = go.Figure(fig_spec)
-    
+
     patched_fig = Patch()
-    
-    patched_fig['layout']['newshape']['line']['color'] = color['hex']
+
+    patched_fig["layout"]["newshape"]["line"]["color"] = color["hex"]
 
     s = shapes[-1]
 
@@ -233,27 +274,24 @@ def on_new_annotation(relayout_data, color, text, fig_spec):
 
     mean_spectrum = roi_cube.mean(axis=(0, 1))
 
-    fig_spec.add_trace(go.Scatter(
-        x=wavelengths,
-        y=mean_spectrum,
-        mode='lines',
-        name=text
-    ))
+    fig_spec.add_trace(
+        go.Scatter(x=wavelengths, y=mean_spectrum, mode="lines", name=text)
+    )
 
     fig_spec.update_layout(
-        xaxis_title="Wavelength",
-        yaxis_title="Intensity",
-        title="ROI Mean Spectra"
+        xaxis_title="Wavelength", yaxis_title="Intensity", title="ROI Mean Spectra"
     )
     return fig_spec, patched_fig
 
+
 @callback(
-    Output(component_id='text-example-output', component_property='children'),
-    Input('pseudo_rgb', 'clickData'),
-    prevent_initial_call=True
+    Output(component_id="text-example-output", component_property="children"),
+    Input("pseudo_rgb", "clickData"),
+    prevent_initial_call=True,
 )
 def on_rgb_click(click_data):
     return str(click_data)
+
 
 if __name__ == "__main__":
     app.run(debug=True)

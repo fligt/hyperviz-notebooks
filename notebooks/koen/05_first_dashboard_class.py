@@ -16,9 +16,9 @@
 from fairdatanow import data_now
 
 # %%
-url = 'https://laboppad.nl/ukiyo-e-world' 
+url = "https://laboppad.nl/ukiyo-e-world"
 
-toml_txt = '''
+toml_txt = """
 # here are the 10 corresponding spectral data cubes processed by Gauthier and Tessa 
 [data.npz] 
 RV-1-4468-544 = ".*RIS/interim/.*RV-1-4468-544.*[.]npz"
@@ -44,271 +44,315 @@ RV-1-4470-27 = ".*akama.*1-4470-27[.]tif"      # TIF NAME WITHOUT RV prefix!
 RV-360-2345g = ".*akama.*RV-360-2345-?g[.]tif"
 RV-360-2359-2 = ".*akama.*RV-360-2359-2[.]tif"
 RV-360-6886 = ".*akama.*RV-360-6886[.]tif"
-'''
+"""
 
 data = data_now(url, toml_txt)
 
 
 # %%
-from dash import Dash, dcc, html, callback, Input, Output, State, no_update, Patch
+import base64
+import binascii
+import re
+import uuid
+
 import dash_daq as daq
-import dash_bootstrap_components as dbc
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import numpy as np
 import tomlkit
-import base64
-
+from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash.exceptions import PreventUpdate
 
 # %%
+DEFAULT_COLOR = "#119DFF"
+SHAPE_COORDINATE = re.compile(r"^shapes\[(\d+)]\.(x0|x1|y0|y1)$")
+
+
+def load_cube(data_dict: dict, object_num: str) -> tuple[np.ndarray, np.ndarray]:
+    """Load an object's cube without retaining a server-side cache."""
+    npz_file = data_dict["npz"][object_num][0]
+    with np.load(npz_file) as npz:
+        cube = npz["image"][:, :, ::-1].transpose(1, 2, 0)
+        wavelengths = npz["wavelengths"].copy()
+    return cube, wavelengths
+
+
+def unique_roi_name(rois: list[dict]) -> str:
+    existing_names = {roi["name"] for roi in rois}
+    number = 1
+    while f"ROI {number}" in existing_names:
+        number += 1
+    return f"ROI {number}"
+
+
+def normalise_roi(
+    shape: dict, name: str, color: str, roi_id: str | None = None
+) -> dict:
+    required = ("x0", "x1", "y0", "y1")
+    if any(coordinate not in shape for coordinate in required):
+        raise ValueError("Each ROI must define x0, x1, y0 and y1")
+    return {
+        "id": roi_id or uuid.uuid4().hex,
+        "name": name,
+        "color": color,
+        **{coordinate: float(shape[coordinate]) for coordinate in required},
+    }
+
+
+def rois_from_toml(document) -> dict[str, list[dict]]:
+    roi_store = {}
+    for object_num, object_rois in document.get("roi", {}).items():
+        roi_store[object_num] = [
+            normalise_roi(roi, roi_name, roi.get("color", DEFAULT_COLOR))
+            for roi_name, roi in object_rois.items()
+        ]
+    return roi_store
+
+
 def create_dashboard(data_dict: dict, toml_text: str) -> Dash:
-    
-    app = Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.SPACELAB])
-    app.layout = dbc.Container(
-            [
-                dcc.Store(id='data_dict_store', data=data_dict),
-                dcc.Store(id='project_toml_store', data={'content': toml_text}),
-                html.H1("Dashboard Title"),
-                dcc.Dropdown(id='object_dropdown', options=list(data_dict['npz'].keys()), placeholder='Select Object Number'),
-                html.Div(id="container")
-            ]
-        )
-    
-    @app.callback(
-    Output(component_id="container", component_property="children"),
-    Input(component_id="object_dropdown", component_property="value"),
-    State(component_id="data_dict_store", component_property="data"),
-    prevent_initial_call=True
+    app = Dash(__name__)
+    graph_config = {
+        "modeBarButtonsToAdd": ["drawrect", "eraseshape"],
+        "scrollZoom": True,
+    }
+    app.layout = html.Div(
+        [
+            dcc.Store(id="roi_store", data={}),
+            dcc.Store(id="base_toml_store", data={"content": toml_text}),
+            html.H1("Dashboard Title"),
+            dcc.Dropdown(
+                id="object_dropdown",
+                options=list(data_dict["npz"].keys()),
+                placeholder="Select Object Number",
+            ),
+            html.Div(
+                [
+                    html.Div(
+                        dcc.Graph(
+                            id="pseudo_rgb_graph", figure={}, config=graph_config
+                        ),
+                        className="graph-panel",
+                    ),
+                    html.Div(
+                        [
+                            daq.ColorPicker(
+                                id="colorpicker",
+                                label="ROI Line Color",
+                                value={"hex": DEFAULT_COLOR},
+                            ),
+                            dcc.Input(
+                                id="annotation_text",
+                                type="text",
+                                placeholder="annotation label",
+                            ),
+                            dcc.Upload(
+                                id="toml_upload",
+                                children=html.Button(
+                                    "Upload ROI TOML",
+                                    className="action-button upload-button",
+                                ),
+                            ),
+                            html.Button(
+                                "Save ROIs",
+                                id="save_btn",
+                                className="action-button save-button",
+                            ),
+                            html.Div(id="upload_status", className="upload-status"),
+                            dcc.Download(id="toml_download"),
+                        ],
+                        className="controls-panel",
+                    ),
+                ],
+                className="dashboard-main",
+            ),
+            html.Div(
+                dcc.Graph(id="mean_spectrum_graph", figure={}),
+                className="spectrum-panel",
+            ),
+        ],
+        className="dashboard",
     )
-    def _change_object(value: str, data_dict: dict):
-        '''Change the visible pseudo_rgb'''
-        npz_file = data_dict['npz'][value][0]
-        npz = np.load(npz_file)
-        cube = npz['image'][:,:, ::-1].transpose(1, 2, 0)
-        wavelengths = npz['wavelengths']
-        pseudo_rgb = cube[:,:, [70, 53, 19]] 
 
-        fig_rgb = px.imshow(pseudo_rgb, binary_string=True)
+    @app.callback(
+        Output("roi_store", "data"),
+        Input("pseudo_rgb_graph", "relayoutData"),
+        State("object_dropdown", "value"),
+        State("roi_store", "data"),
+        State("colorpicker", "value"),
+        State("annotation_text", "value"),
+        prevent_initial_call=True,
+    )
+    def update_roi_from_shapes(
+        relayout_data, object_num, roi_store, color, annotation_text
+    ):
+        if not object_num or not relayout_data:
+            raise PreventUpdate
 
-        fig_rgb.update_layout(dragmode='drawrect')
+        current_rois = list((roi_store or {}).get(object_num, []))
+        updated_rois = current_rois
+        if "shapes" in relayout_data:
+            existing_by_id = {roi["id"]: roi for roi in current_rois}
+            updated_rois = []
+            for shape in relayout_data["shapes"]:
+                roi_id = shape.get("name")
+                existing = existing_by_id.get(roi_id)
+                name = (
+                    existing["name"]
+                    if existing
+                    else (
+                        annotation_text or unique_roi_name(current_rois + updated_rois)
+                    )
+                )
+                shape_color = (
+                    existing["color"]
+                    if existing
+                    else (color or {}).get("hex", DEFAULT_COLOR)
+                )
+                updated_rois.append(normalise_roi(shape, name, shape_color, roi_id))
+        else:
+            changed = False
+            updated_rois = [dict(roi) for roi in current_rois]
+            for key, value in relayout_data.items():
+                match = SHAPE_COORDINATE.match(key)
+                if match and int(match.group(1)) < len(updated_rois):
+                    updated_rois[int(match.group(1))][match.group(2)] = float(value)
+                    changed = True
+            if not changed:
+                raise PreventUpdate
 
-        fig_rgb_config = {"modeBarButtonsToAdd": ["drawrect", "eraseshape"], "scrollZoom":True}
+        new_store = dict(roi_store or {})
+        new_store[object_num] = updated_rois
+        return new_store
 
-        fig_spec = go.Figure()
+    @app.callback(
+        Output("roi_store", "data", allow_duplicate=True),
+        Output("base_toml_store", "data"),
+        Output("upload_status", "children"),
+        Input("toml_upload", "contents"),
+        prevent_initial_call=True,
+    )
+    def upload_toml(upload_contents):
+        if not upload_contents:
+            raise PreventUpdate
+        try:
+            _, content_string = upload_contents.split(",", 1)
+            uploaded_text = base64.b64decode(content_string).decode("utf-8")
+            document = tomlkit.parse(uploaded_text)
+            uploaded_rois = rois_from_toml(document)
+        except (
+            ValueError,
+            UnicodeDecodeError,
+            binascii.Error,
+            tomlkit.exceptions.ParseError,
+        ) as error:
+            return (
+                no_update,
+                no_update,
+                html.Div(
+                    f"Could not load TOML: {error}",
+                    className="status-message status-message--error",
+                ),
+            )
+        return (
+            uploaded_rois,
+            {"content": uploaded_text},
+            html.Div(
+                "ROI TOML loaded",
+                className="status-message status-message--success",
+            ),
+        )
 
-        fig_spec.add_trace(go.Scatter(
-            x=wavelengths,
-            y=cube.mean(axis=(0,1)),
-            mode='lines',
-            name='Full Mean Spectrum'
-        ))
+    @app.callback(
+        Output("pseudo_rgb_graph", "figure"),
+        Output("mean_spectrum_graph", "figure"),
+        Input("object_dropdown", "value"),
+        Input("roi_store", "data"),
+        Input("colorpicker", "value"),
+    )
+    def render_figures(object_num: str | None, roi_store: dict, color: dict):
+        if not object_num:
+            return {}, {}
 
-        fig_spec.update_layout(
+        cube, wavelengths = load_cube(data_dict, object_num)
+        height, width, _ = cube.shape
+        rgb_figure = px.imshow(cube[:, :, [70, 53, 19]], binary_string=True)
+        rgb_figure.update_layout(
+            dragmode="drawrect",
+            newshape={
+                "line": {"color": (color or {}).get("hex", DEFAULT_COLOR), "width": 4}
+            },
+        )
+
+        spectrum_figure = go.Figure(
+            go.Scatter(
+                x=wavelengths,
+                y=cube.mean(axis=(0, 1)),
+                mode="lines",
+                name="Full Mean Spectrum",
+            )
+        )
+        spectrum_figure.update_layout(
             xaxis_title="Wavelength",
             yaxis_title="Intensity",
-            title="ROI Mean Spectra"
+            title="ROI Mean Spectra",
         )
-    
-        return html.Div([
-            dbc.Row([
-                dbc.Col(dcc.Graph(id="pseudo_rgb_graph", figure=fig_rgb, config=fig_rgb_config), width=8),
-                dbc.Col([
-                    daq.ColorPicker(id="colorpicker", label="ROI Line Color", value=dict(hex="#119DFF")),
-                    dbc.Input(id="annotation_text", type="text", placeholder="annotation label"),
-                    dcc.Upload(id='toml_upload', children=dbc.Button("Upload ROI TOML", color="primary", className="mt-1")),
-                    dbc.Button("Save ROI's", id="save_btn", color="success", className="mt-1"),
-                    dcc.Download(id="toml_download")
-                    ], width=4)
-            ]),
-            dbc.Row(dcc.Graph(id="mean_spectrum_graph", figure=fig_spec))
-            ])
 
-    @app.callback(
-        Output(component_id="pseudo_rgb_graph", component_property="figure"),
-        Input(component_id="colorpicker", component_property="value")
-    )
-    def on_color_select(color :dict):
-        patch = Patch()
-        patch['layout']['newshape']['line']['color'] = color['hex']
-        return patch
-    
-
-    @app.callback(
-        Output(component_id="mean_spectrum_graph", component_property="figure"),
-        Input(component_id="pseudo_rgb_graph", component_property="relayoutData"),
-        State(component_id="mean_spectrum_graph", component_property="figure"),
-        State(component_id="data_dict_store", component_property="data"),
-        State(component_id="object_dropdown", component_property="value"),
-        State(component_id="colorpicker", component_property="value"),
-        State(component_id="annotation_text", component_property="value"),
-        prevent_initial_call=True
-    )
-    def on_drawrect(relayout_data: dict, fig_spec: dict, data_dict: dict, value: str, color: dict, annotation_text: str):
-        shapes = (relayout_data or {}).get("shapes")
-        if not shapes:
-            return no_update
-        shape = shapes[-1]
-        
-        npz_file = data_dict['npz'][value][0]
-        npz = np.load(npz_file)
-        cube = npz['image'][:,:, ::-1].transpose(1, 2, 0)
-        wavelengths = npz['wavelengths'] 
-        h, w, d = cube.shape
-
-        x0, x1 = sorted([max(0, min(w, int(shape["x0"]))), max(0, min(w, int(shape["x1"])))])
-        y0, y1 = sorted([max(0, min(h, int(shape["y0"]))), max(0, min(h, int(shape["y1"])))])
-        
-        roi_cube = cube[y0:y1, x0:x1, :]
-
-        if roi_cube.size == 0:
-            return no_update
-        mean_spectrum = roi_cube.mean(axis=(0, 1))
-
-        fig_spec = go.Figure(fig_spec)
-
-        if not annotation_text:
-            annotation_text = x0+x1+y0+y1
-
-        fig_spec.add_trace(go.Scatter(
-        x=wavelengths,
-        y=mean_spectrum,
-        mode='lines',
-        name=annotation_text,
-        line_color=color['hex']
-        ))
-        
-        return fig_spec
-
-    @app.callback(
-        Output(component_id="mean_spectrum_graph", component_property="figure", allow_duplicate=True),
-        Output(component_id="pseudo_rgb_graph", component_property="figure", allow_duplicate=True),
-        Input(component_id="toml_upload", component_property="contents"),
-        State(component_id="object_dropdown", component_property="value"),
-        State(component_id="mean_spectrum_graph", component_property="figure"),
-        State(component_id="data_dict_store", component_property="data"),
-        prevent_initial_call=True
-    )
-    def upload_TOML(contents, object_num: str, fig_spec: dict, data_dict: dict):
-        npz_file = data_dict['npz'][object_num][0]
-        npz = np.load(npz_file)
-        cube = npz['image'][:,:, ::-1].transpose(1, 2, 0)
-        wavelengths = npz['wavelengths']
-
-        content_type, content_string = contents.split(',')
-
-        decoded_bytes = base64.b64decode(content_string)
-
-        toml_text = decoded_bytes.decode('utf-8')
-
-        parsed_data = tomlkit.parse(toml_text)
-
-        fig_spec = go.Figure(fig_spec)
-
-        rgb_patch = Patch()
-
-        rois = parsed_data.get('roi', {}).get(object_num, {})
-
-        for roi_name, roi_dict in rois.items():
-            x0, x1 = int(roi_dict['x0']), int(roi_dict['x1'])
-            y0, y1 = int(roi_dict['y0']), int(roi_dict['y1'])
-            color = roi_dict.get('color', '#119DFF')
-
+        for roi in (roi_store or {}).get(object_num, []):
+            x0, x1 = sorted(max(0, min(width, int(roi[key]))) for key in ("x0", "x1"))
+            y0, y1 = sorted(max(0, min(height, int(roi[key]))) for key in ("y0", "y1"))
+            rgb_figure.add_shape(
+                type="rect",
+                name=roi["id"],
+                editable=True,
+                x0=x0,
+                x1=x1,
+                y0=y0,
+                y1=y1,
+                line={"color": roi["color"], "width": 4},
+                fillcolor="rgba(0,0,0,0)",
+            )
             roi_cube = cube[y0:y1, x0:x1, :]
-            mean_spectrum = roi_cube.mean(axis=(0, 1))
-
-            fig_spec.add_trace(go.Scatter(
-                x=wavelengths,
-                y=mean_spectrum,
-                mode='lines',
-                name=roi_name,
-                line_color=color
-            ))
-
-            new_shape = {
-                "type": "rect",
-                "x0": x0,
-                "x1": x1,
-                "y0": y0,
-                "y1": y1,
-                "line": {"color": color, "width": 4},
-                "fillcolor": "rgba(0,0,0,0)"
-            }
-            rgb_patch["layout"]["shapes"].append(new_shape)
-
-        return fig_spec, rgb_patch
-
+            if roi_cube.size:
+                spectrum_figure.add_trace(
+                    go.Scatter(
+                        x=wavelengths,
+                        y=roi_cube.mean(axis=(0, 1)),
+                        mode="lines",
+                        name=roi["name"],
+                        line_color=roi["color"],
+                    )
+                )
+        return rgb_figure, spectrum_figure
 
     @app.callback(
-        Output(component_id="toml_download", component_property="data"),
-        Input(component_id="save_btn", component_property="n_clicks"),
-        State(component_id="pseudo_rgb_graph", component_property="figure"),
-        State(component_id="mean_spectrum_graph", component_property="figure"),
-        State(component_id="object_dropdown", component_property="value"),
-        State(component_id="project_toml_store", component_property="data"),
-        prevent_initial_call=True
+        Output("toml_download", "data"),
+        Input("save_btn", "n_clicks"),
+        State("roi_store", "data"),
+        State("base_toml_store", "data"),
+        prevent_initial_call=True,
     )
-    def download_TOML_contents(n: int, rgb: dict, spec: dict, object_num: str, toml_dict: dict):
-        if toml_dict['content']:
-            doc = tomlkit.parse(toml_dict['content'])
-        else:
-            doc = tomlkit.document()
-
+    def download_toml_contents(_n: int, roi_store: dict, toml_data: dict):
+        content = (toml_data or {}).get("content")
+        document = tomlkit.parse(content) if content else tomlkit.document()
         roi_table = tomlkit.table()
-        object_table = tomlkit.table()
-        
-        roi_table[object_num] = object_table
-
-        for shape, line in zip(rgb['layout']['shapes'], spec['data'][1:]):
-            sub_table = tomlkit.table()
-            sub_table['color'] = shape['line']['color']
-            sub_table['x0'] = shape['x0']
-            sub_table['x1'] = shape['x1']
-            sub_table['y0'] = shape['y0']
-            sub_table['y1'] = shape['y1']
-            
-            roi_table[object_num][line['name']] = sub_table
-        
-        doc['roi'] = roi_table
-
-        return dict(content=tomlkit.dumps(doc), filename="question.toml")
+        for object_num, rois in (roi_store or {}).items():
+            object_table = tomlkit.table()
+            for roi in rois:
+                roi_data = tomlkit.table()
+                for key in ("color", "x0", "x1", "y0", "y1"):
+                    roi_data[key] = roi[key]
+                object_table[roi["name"]] = roi_data
+            roi_table[object_num] = object_table
+        document["roi"] = roi_table
+        return {"content": tomlkit.dumps(document), "filename": "question.toml"}
 
     return app
+
 
 def run_app(data_dict: dict, toml_text: str):
     app = create_dashboard(data_dict=data_dict, toml_text=toml_text)
     app.run(jupyter_mode="external", debug=True)
 
 
-
 # %%
 run_app(data_dict=data, toml_text=toml_txt)
-
-
-# %%
-def create_app(data: dict) -> Dash:
-    app = Dash(__name__)
-    app.layout = html.Div([
-        dcc.Store(id="data", data=data),
-        dcc.Button("Click me", id="button"),
-        html.Div(id="number")
-    ])
-
-    @app.callback(
-        Output(component_id="number", component_property="children"),
-        Input(component_id="button", component_property="n_clicks"),
-        State(component_id="data", component_property="data")
-    )
-    def show_number(button_n_clicks: int, data: dict) -> str:
-        return 
-
-    return app
-
-def run_npz_app(data: dict) -> None:
-    app = create_app(data)
-    app.run(debug=True)
-
-
-# %%
-run_app(data)
-
-# %%
