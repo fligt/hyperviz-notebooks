@@ -14,7 +14,6 @@
 
 # %%
 import base64
-import binascii
 import re
 import uuid
 
@@ -34,7 +33,6 @@ from dash import (
     html,
     no_update,
 )
-from dash.exceptions import PreventUpdate
 from fairdatanow import data_now
 from PIL import Image
 
@@ -68,6 +66,7 @@ RV-360-6886 = ".*akama.*RV-360-6886[.]tif"
 data = data_now(url, toml_txt)
 DEFAULT_OBJECT = "RV-1-4470-27"
 DEFAULT_COLOR = "#119DFF"
+ROI_COORDINATES = ("x0", "x1", "y0", "y1")
 SHAPE_COORDINATE = re.compile(r"^shapes\[(\d+)]\.(x0|x1|y0|y1)$")
 VIEW_SIZE = (900, 700)
 
@@ -75,7 +74,7 @@ VIEW_SIZE = (900, 700)
 def load_cube(object_num):
     with np.load(data["npz"][object_num][0]) as npz:
         cube = npz["image"][:, :, ::-1].transpose(1, 2, 0)
-        wavelengths = npz["wavelengths"].copy()
+        wavelengths = npz["wavelengths"]
     return cube, wavelengths
 
 
@@ -122,7 +121,7 @@ def normalized_roi(shape, name, color, roi_id=None):
         "id": roi_id or uuid.uuid4().hex,
         "name": name,
         "color": color,
-        **{key: float(shape[key]) for key in ("x0", "x1", "y0", "y1")},
+        **{key: float(shape[key]) for key in ROI_COORDINATES},
     }
 
 
@@ -170,11 +169,11 @@ app.layout = html.Div(
         html.Div(
             [
                 html.Div(
-                    [html.H3("Pseudo RGB"), graph("pseudo", draw=True)],
+                    [html.H3("TIFF"), graph("tif")],
                     style={"minWidth": 0},
                 ),
                 html.Div(
-                    [html.H3("TIFF"), graph("tif")],
+                    [html.H3("Pseudo RGB"), graph("pseudo", draw=True)],
                     style={"minWidth": 0},
                 ),
             ],
@@ -203,8 +202,8 @@ app.layout = html.Div(
 
 
 def roi_bounds(roi, width, height):
-    x0, x1 = sorted(np.clip([roi["x0"], roi["x1"]], 0, width).astype(int))
-    y0, y1 = sorted(np.clip([roi["y0"], roi["y1"]], 0, height).astype(int))
+    x0, x1 = sorted(max(0, min(width, int(roi[key]))) for key in ("x0", "x1"))
+    y0, y1 = sorted(max(0, min(height, int(roi[key]))) for key in ("y0", "y1"))
     return x0, x1, y0, y1
 
 
@@ -327,7 +326,7 @@ def render_tif(object_num):
 )
 def update_rois(event, object_num, roi_store, color, requested_name):
     if not event:
-        raise PreventUpdate
+        return no_update
     current = list((roi_store or {}).get(object_num, []))
     updated = [dict(roi) for roi in current]
 
@@ -356,7 +355,7 @@ def update_rois(event, object_num, roi_store, color, requested_name):
                 updated[int(match.group(1))][match.group(2)] = float(value)
                 changed = True
         if not changed:
-            raise PreventUpdate
+            return no_update
 
     result = dict(roi_store or {})
     result[object_num] = updated
@@ -388,21 +387,27 @@ def visible_range(event, width, height):
 )
 def sync_views(pseudo_event, tif_event, object_num, pseudo_size):
     if not pseudo_size:
-        raise PreventUpdate
+        return no_update, no_update
     pw, ph = pseudo_size
-    tif = load_tif(object_num)
-    tw, th = tif.size
     from_pseudo = ctx.triggered_id == "pseudo"
     event = pseudo_event if from_pseudo else tif_event
-    sw, sh = (pw, ph) if from_pseudo else (tw, th)
-    x_range, y_range = visible_range(event or {}, sw, sh)
+
+    if from_pseudo:
+        x_range, y_range = visible_range(event or {}, pw, ph)
+        if x_range is None:
+            return no_update, no_update
+
+    tif = load_tif(object_num)
+    tw, th = tif.size
+    if from_pseudo:
+        tif_x = [x * tw / pw for x in x_range]
+        tif_y = [y * th / ph for y in y_range]
+    else:
+        tif_x, tif_y = visible_range(event or {}, tw, th)
+        x_range, y_range = tif_x, tif_y
     if x_range is None:
         return no_update, no_update
 
-    tif_x = [x * tw / sw for x in x_range]
-    tif_y = [y * th / sh for y in y_range]
-    pseudo_x = [x * pw / sw for x in x_range]
-    pseudo_y = [y * ph / sh for y in y_range]
     rendered = image_figure(tif, tif_x, tif_y).layout.images[0]
 
     pseudo_patch, tif_patch = Patch(), Patch()
@@ -412,8 +417,8 @@ def sync_views(pseudo_event, tif_event, object_num, pseudo_size):
         tif_patch["layout"]["xaxis"]["range"] = tif_x
         tif_patch["layout"]["yaxis"]["range"] = tif_y
     else:
-        pseudo_patch["layout"]["xaxis"]["range"] = pseudo_x
-        pseudo_patch["layout"]["yaxis"]["range"] = pseudo_y
+        pseudo_patch["layout"]["xaxis"]["range"] = [x * pw / tw for x in x_range]
+        pseudo_patch["layout"]["yaxis"]["range"] = [y * ph / th for y in y_range]
     return pseudo_patch, tif_patch
 
 
@@ -426,14 +431,13 @@ def sync_views(pseudo_event, tif_event, object_num, pseudo_size):
 )
 def upload_toml(contents):
     if not contents:
-        raise PreventUpdate
+        return no_update, no_update, no_update
     try:
-        text = base64.b64decode(contents.split(",", 1)[1], validate=True).decode()
+        _, encoded = contents.split(",", 1)
+        text = base64.b64decode(encoded, validate=True).decode()
         return rois_from_toml(text), text, "ROI TOML loaded"
     except (
         ValueError,
-        UnicodeDecodeError,
-        binascii.Error,
         tomlkit.exceptions.ParseError,
     ):
         return no_update, no_update, "Could not load ROI TOML"
@@ -453,7 +457,7 @@ def download_toml(_clicks, roi_store, base_toml):
         object_table = tomlkit.table()
         for roi in rois:
             object_table[roi["name"]] = {
-                key: roi[key] for key in ("color", "x0", "x1", "y0", "y1")
+                key: roi[key] for key in ("color", *ROI_COORDINATES)
             }
         roi_table[object_num] = object_table
     document["roi"] = roi_table
